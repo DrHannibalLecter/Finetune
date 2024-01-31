@@ -1,9 +1,22 @@
-from transformers import BitsAndBytesConfig, AutoTokenizer, TrainingArguments, AutoModelForCausalLM
+from transformers import BitsAndBytesConfig, LlamaTokenizerFast, TrainingArguments, AutoModelForCausalLM, Trainer
 from trl import SFTTrainer
 from datasets import Dataset
-from peft import LoraConfig
-from torch import bfloat16
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+import torch
 import pandas as pd
+
+
+output_dir = "/home/arda/Documents/Finetune/result"
+per_device_train_batch_size = 16
+gradient_accumulation_steps = 16
+num_train_epochs = 3
+save_steps = 200
+logging_steps = 10
+learning_rate = 3e-4
+max_grad_norm = 0.3
+warmup_ratio = 0.03
+lr_scheduler_type = "linear"
+
 
 
 # 4bit quantization
@@ -11,7 +24,7 @@ import pandas as pd
     load_in_4bit=True,
     bnb_4bit_quant_type='nf4',
     bnb_4bit_use_double_quant=True,
-    bnb_4bit_compute_dtype=bfloat16
+    bnb_4bit_compute_dtype=torch.bfloat16
 )"""
 
 # 8 bit quantization
@@ -21,7 +34,7 @@ bnb_config = BitsAndBytesConfig(
 
 
 # Model and Tokenizer load
-model_id = ''
+model_id = 'meta-llama/Llama-2-7b-chat-hf'
 
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
@@ -29,12 +42,22 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
 )
 model.config.use_cache = False
-tokenizer = AutoTokenizer.from_pretrained(model_id)
+tokenizer = LlamaTokenizerFast.from_pretrained(model_id, add_eos_token=True)
+
 
 tokenizer.pad_token = tokenizer.eos_token
 
 tokenizer.padding_side = "right"
 
+# rest is datset handler for specific prompt
+
+def concatenate_values(row):
+    if row["input"]:
+        input = f"<<SYS>>\n{row['instruction']}\n<</SYS>>\n\n{row['input']}"
+    else:
+        input = row["instruction"]
+    output = row["output"]
+    return f"[INST] {input} [/INST] {output} "
 
 
 def dataset_handler(json_file):
@@ -47,34 +70,29 @@ def dataset_handler(json_file):
 
 
 # Load dataset
-dataset = dataset_handler("pth to json file")
+dataset = dataset_handler("./dataset/onur_alpaca.json")
 
 
 
 
 peft_config = LoraConfig(
-    r=64,
-    lora_alpha=128,
-    lora_dropout=0.1,
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj"],
     bias="none",
     task_type="CAUSAL_LM",
 )
-
-output_dir = "/home/arda/Desktop/result"
-per_device_train_batch_size = 4
-gradient_accumulation_steps = 4
-save_steps = 100
-logging_steps = 10
-learning_rate = 2e-4
-max_grad_norm = 0.3
-warmup_ratio = 0.03
-lr_scheduler_type = "constant"
 
 
 training_arguments = TrainingArguments(
     output_dir=output_dir,
     per_device_train_batch_size=per_device_train_batch_size,
     gradient_accumulation_steps=gradient_accumulation_steps,
+    num_train_epochs=num_train_epochs,
     save_steps=save_steps,
     logging_steps=logging_steps,
     learning_rate=learning_rate,
@@ -84,6 +102,8 @@ training_arguments = TrainingArguments(
     lr_scheduler_type=lr_scheduler_type,
 )
 
+model = prepare_model_for_kbit_training(model)
+model = get_peft_model(model, peft_config)
 
 trainer = SFTTrainer(
     model=model,
@@ -96,17 +116,6 @@ trainer = SFTTrainer(
 )
 
 
+
 trainer.train()
 trainer.model.save_pretrained(output_dir)
-
-
-
-# rest is datset handler for specific prompt
-
-def concatenate_values(row):
-    if row["input"]:
-        input = f"<<SYS>>\n{row['instruction']}\n<</SYS>>\n\n{row['input']}"
-    else:
-        input = row["instruction"]
-    output = row["output"]
-    return f"[INST] {input} [/INST] {output} "
