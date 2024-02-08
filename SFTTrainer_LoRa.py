@@ -16,6 +16,21 @@ learning_rate = 3e-4
 max_grad_norm = 0.3
 warmup_ratio = 0.03
 lr_scheduler_type = "linear"
+resume_from_checkpoint = None
+
+peft_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
+    target_modules=[
+        "q_proj",
+        "k_proj",
+        "v_proj"],
+    bias="none",
+    task_type="CAUSAL_LM",
+)
+
+
 
 
 
@@ -75,18 +90,6 @@ dataset = dataset_handler("./dataset/onur_alpaca.json")
 
 
 
-peft_config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules=[
-        "q_proj",
-        "k_proj",
-        "v_proj"],
-    bias="none",
-    task_type="CAUSAL_LM",
-)
-
 
 training_arguments = TrainingArguments(
     output_dir=output_dir,
@@ -100,6 +103,7 @@ training_arguments = TrainingArguments(
     warmup_ratio=warmup_ratio,
     group_by_length=True,
     lr_scheduler_type=lr_scheduler_type,
+    resume_from_checkpoint=resume_from_checkpoint,
 )
 
 model = prepare_model_for_kbit_training(model)
@@ -116,6 +120,7 @@ trainer = SFTTrainer(
 )
 
 
+print(training_arguments)
 
 trainer.train()
 trainer.model.save_pretrained(output_dir)

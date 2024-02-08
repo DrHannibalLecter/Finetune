@@ -3,7 +3,7 @@
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-base_model_name_or_path = "mistralai/Mistral-7B-Instruct-v0.2"
+base_model_name_or_path = "meta-llama/Llama-2-7b-chat-hf"
 lora_model_name_or_path = "./models/7_epoch__merged-alpaca-dolly-bactrianx/checkpoint-7000"
 
 access_token = ""
@@ -31,7 +31,7 @@ model = AutoModelForCausalLM.from_pretrained(
          "./models/5_epoch_onur-alpaca/onur-alpaca/checkpoint-1400",
          ]"""
 
-loras = ["./models/checkpoint-5400"]
+loras = ["./mistral_output/mist_result/checkpoint-50"]
 
 
 for i in loras:
